@@ -1,0 +1,8 @@
+venv
+input
+*.duckdb
+.user.*
+dbt_packages
+logs
+target
+package-lock.yml
