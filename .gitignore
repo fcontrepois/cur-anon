@@ -1,8 +1,8 @@
-venv
-input
-*.duckdb
-.user.*
-dbt_packages
-logs
-target
-package-lock.yml
+dbt/venv
+dbt/input
+dbt/*.duckdb
+dbt/.user.*
+dbt/dbt_packages
+dbt/logs
+dbt/target
+dbt/package-lock.yml
