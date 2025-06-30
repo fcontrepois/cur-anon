@@ -1,4 +1,5 @@
 # curanonymiser.py
+# mostly done between DIA AI and chatGPT with some check from me
 
 import argparse
 import duckdb
