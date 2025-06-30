@@ -8,20 +8,67 @@ import random
 import re
 import sys
 
+HELP_TEXT = """
+Anonymise AWS CUR Parquet files.
+
+Flags:
+  --input           Path to the input Parquet file (required)
+  --output          Path to the output Parquet file (required unless --create-config is used)
+  --config          Path to the JSON config file (required unless --create-config is used)
+  --create-config   Generate a config file from the input Parquet file and exit
+
+Config file options:
+  The config file is a JSON file with this structure:
+  {
+    "_comment": "Column options: 'keep', 'remove', 'awsid_anonymise', 'awsarn_anonymise'",
+    "columns": {
+      "column1": "keep",
+      "column2": "remove",
+      "column3": "awsid_anonymise",
+      "column4": "awsarn_anonymise"
+    }
+  }
+
+  Column options:
+    keep              Keep the column as is
+    remove            Remove the column from the output
+    awsid_anonymise   Anonymise as AWS account ID (12-digit fake, consistent)
+    awsarn_anonymise  Anonymise as AWS ARN, using the fake account ID
+
+Examples:
+  Create a config file:
+    python curanonymiser.py --input rawcur.parquet --create-config --config config.json
+
+  Run anonymisation:
+    python curanonymiser.py --input rawcur.parquet --output anonymisedcur.parquet --config config.json
+"""
+
 def parse_args():
-    parser = argparse.ArgumentParser(description="Anonymise AWS CUR Parquet files.")
-    parser.add_argument('--input', required=True, help='Input Parquet file')
+    parser = argparse.ArgumentParser(
+        description="Anonymise AWS CUR Parquet files.",
+        add_help=False,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=HELP_TEXT
+    )
+    parser.add_argument('--input', required=False, help='Input Parquet file')
     parser.add_argument('--output', required=False, help='Output Parquet file')
     parser.add_argument('--config', required=False, help='JSON config file for column handling')
     parser.add_argument('--create-config', action='store_true', help='Create a config file from the input Parquet file')
+    parser.add_argument('--help', action='store_true', help='Show this help message and exit')
     return parser.parse_args()
 
 def generate_config(input_file, config_file):
     con = duckdb.connect()
-    # Read only the schema
     df = con.execute(f"SELECT * FROM read_parquet('{input_file}') LIMIT 0").fetchdf()
     columns = list(df.columns)
-    config = {"columns": {col: "keep" for col in columns}}
+    config = {
+        "_comment": (
+            "Column options: 'keep' (keep as is), 'remove' (remove column), "
+            "'awsid_anonymise' (anonymise as AWS account ID), "
+            "'awsarn_anonymise' (anonymise as AWS ARN using fake account ID)"
+        ),
+        "columns": {col: "keep" for col in columns}
+    }
     with open(config_file, "w") as f:
         json.dump(config, f, indent=2)
     print(f"Config file created at {config_file}")
@@ -69,13 +116,21 @@ def build_arn_mapping(con, table, col, account_col, account_mapping_table):
 def main():
     args = parse_args()
 
+    if args.help:
+        print(HELP_TEXT)
+        sys.exit(0)
+
     if args.create_config:
+        if not args.input:
+            print("Error: --input is required for --create-config")
+            sys.exit(1)
         config_file = args.config or "config.json"
         generate_config(args.input, config_file)
         sys.exit(0)
 
-    if not args.config or not args.output:
-        print("Error: --config and --output are required unless --create-config is used.")
+    if not args.config or not args.output or not args.input:
+        print("Error: --input, --config and --output are required unless --create-config is used.\n")
+        print(HELP_TEXT)
         sys.exit(1)
 
     with open(args.config, 'r') as f:
