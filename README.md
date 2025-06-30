@@ -95,7 +95,7 @@ python curanonymiser.py --help
 
 ## 🤔 Why bother?
 
-CUR data is gold for cost analysis, but it’s packed with sensitive stuff. curanonymiser lets you keep the insights, lose the risk. No cloud uploads, no headaches—just Python, DuckDB, and you.
+CUR data is gold for cost analysis, but it’s packed with sensitive stuff. curanonymiser lets you keep the insights, lose the risk. No cloud uploads, no headaches: just Python, DuckDB, and you.
 
 ---
 
