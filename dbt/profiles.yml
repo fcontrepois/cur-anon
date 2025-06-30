@@ -1,7 +1,0 @@
-cur_anon_duckdb:
-  target: dev
-  outputs:
-    dev:
-      type: duckdb
-      path: 'cur-anon.duckdb'
-      threads: 8

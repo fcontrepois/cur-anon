@@ -1,1 +1,0 @@
-This project is using dbt to anonymise AWS cur files so that they can be easily sshared.
