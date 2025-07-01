@@ -25,6 +25,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# curanonymiser.py
 
 import argparse
 import duckdb
@@ -83,7 +84,7 @@ def parse_args():
     parser.add_argument('--help', action='store_true', help='Show this help message and exit')
     return parser.parse_args()
 
-def generate_config(input_file, config_file):
+def generate_config(input_file):
     con = duckdb.connect()
     df = con.execute(f"SELECT * FROM read_parquet('{input_file}') LIMIT 0").fetchdf()
     columns = list(df.columns)
@@ -95,9 +96,7 @@ def generate_config(input_file, config_file):
         ),
         "columns": {col: "keep" for col in columns}
     }
-    with open(config_file, "w") as f:
-        json.dump(config, f, indent=2)
-    print(f"Config file created at {config_file}")
+    return config
 
 def generate_fake_aws_account_id(original_id):
     random.seed(str(original_id))
@@ -150,8 +149,13 @@ def main():
         if not args.input:
             print("Error: --input is required for --create-config")
             sys.exit(1)
-        config_file = args.config or "config.json"
-        generate_config(args.input, config_file)
+        config = generate_config(args.input)
+        if args.config:
+            with open(args.config, "w") as f:
+                json.dump(config, f, indent=2)
+            print(f"Config file created at {args.config}")
+        else:
+            print(json.dumps(config, indent=2))
         sys.exit(0)
 
     if not args.config or not args.output or not args.input:
