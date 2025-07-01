@@ -40,7 +40,7 @@ Anonymise AWS CUR Parquet files.
 
 Flags:
   --input           Path to the input Parquet file (required)
-  --output          Path to the output Parquet file (required unless --create-config is used)
+  --output          Path to the output file (required unless --create-config is used)
   --config          Path to the JSON config file (required unless --create-config is used)
   --create-config   Generate a config file from the input Parquet file and exit
 
@@ -78,13 +78,13 @@ def parse_args():
         epilog=HELP_TEXT
     )
     parser.add_argument('--input', required=False, help='Input Parquet file')
-    parser.add_argument('--output', required=False, help='Output Parquet file')
+    parser.add_argument('--output', required=False, help='Output file (Parquet or CSV)')
     parser.add_argument('--config', required=False, help='JSON config file for column handling')
     parser.add_argument('--create-config', action='store_true', help='Create a config file from the input Parquet file')
     parser.add_argument('--help', action='store_true', help='Show this help message and exit')
     return parser.parse_args()
 
-def generate_config(input_file):
+def generate_config(input_file, config_file=None):
     con = duckdb.connect()
     df = con.execute(f"SELECT * FROM read_parquet('{input_file}') LIMIT 0").fetchdf()
     columns = list(df.columns)
@@ -96,7 +96,12 @@ def generate_config(input_file):
         ),
         "columns": {col: "keep" for col in columns}
     }
-    return config
+    if config_file:
+        with open(config_file, "w") as f:
+            json.dump(config, f, indent=2)
+        print(f"Config file created at {config_file}")
+    else:
+        print(json.dumps(config, indent=2))
 
 def generate_fake_aws_account_id(original_id):
     random.seed(str(original_id))
@@ -149,13 +154,11 @@ def main():
         if not args.input:
             print("Error: --input is required for --create-config")
             sys.exit(1)
-        config = generate_config(args.input)
+        # If --config is not provided, print to stdout
         if args.config:
-            with open(args.config, "w") as f:
-                json.dump(config, f, indent=2)
-            print(f"Config file created at {args.config}")
+            generate_config(args.input, args.config)
         else:
-            print(json.dumps(config, indent=2))
+            generate_config(args.input, None)
         sys.exit(0)
 
     if not args.config or not args.output or not args.input:
@@ -201,8 +204,16 @@ def main():
             select_cols.append(f"cur.\"{col}\"")
 
     select_sql = f"SELECT {', '.join(select_cols)} FROM cur " + " ".join(join_clauses)
-    con.execute(f"COPY ({select_sql}) TO '{args.output}' (FORMAT PARQUET)")
-    print(f"Anonymised file written to {args.output}")
+
+    output_file = args.output
+    output_ext = os.path.splitext(output_file)[1].lower()
+
+    if output_ext == ".csv":
+        con.execute(f"COPY ({select_sql}) TO '{output_file}' (FORMAT CSV, HEADER 1)")
+        print(f"Anonymised file written to {output_file} (CSV format)")
+    else:
+        con.execute(f"COPY ({select_sql}) TO '{output_file}' (FORMAT PARQUET)")
+        print(f"Anonymised file written to {output_file} (Parquet format)")
 
 if __name__ == "__main__":
     main()
