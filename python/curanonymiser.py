@@ -24,7 +24,6 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
 # curanonymiser.py
 
 import argparse
@@ -47,12 +46,13 @@ Flags:
 Config file options:
   The config file is a JSON file with this structure:
   {
-    "_comment": "Column options: 'keep', 'remove', 'awsid_anonymise', 'awsarn_anonymise'",
+    "_comment": "Column options: 'keep', 'remove', 'awsid_anonymise', 'awsarn_anonymise', 'hash'",
     "columns": {
       "column1": "keep",
       "column2": "remove",
       "column3": "awsid_anonymise",
-      "column4": "awsarn_anonymise"
+      "column4": "awsarn_anonymise",
+      "column5": "hash"
     }
   }
 
@@ -61,6 +61,7 @@ Config file options:
     remove            Remove the column from the output
     awsid_anonymise   Anonymise as AWS account ID (12-digit fake, consistent)
     awsarn_anonymise  Anonymise as AWS ARN, using the fake account ID
+    hash              Hash the column using DuckDB's md5_number_upper (same input = same output, not reversible)
 
 Examples:
   Create a config file:
@@ -92,7 +93,8 @@ def generate_config(input_file, config_file=None):
         "_comment": (
             "Column options: 'keep' (keep as is), 'remove' (remove column), "
             "'awsid_anonymise' (anonymise as AWS account ID), "
-            "'awsarn_anonymise' (anonymise as AWS ARN using fake account ID)"
+            "'awsarn_anonymise' (anonymise as AWS ARN using fake account ID), "
+            "'hash' (hash the column using DuckDB's md5_number_upper)"
         ),
         "columns": {col: "keep" for col in columns}
     }
@@ -174,9 +176,10 @@ def main():
     con.execute(f"CREATE TABLE cur AS SELECT * FROM read_parquet('{args.input}')")
 
     all_cols = [row[0] for row in con.execute("PRAGMA table_info(cur)").fetchall()]
-    keep_cols = [col for col, action in column_actions.items() if action in ("keep", "awsid_anonymise", "awsarn_anonymise")]
+    keep_cols = [col for col, action in column_actions.items() if action in ("keep", "awsid_anonymise", "awsarn_anonymise", "hash")]
     anonymise_awsid_cols = [col for col, action in column_actions.items() if action == "awsid_anonymise"]
     anonymise_arn_cols = [col for col, action in column_actions.items() if action == "awsarn_anonymise"]
+    hash_cols = [col for col, action in column_actions.items() if action == "hash"]
 
     mapping_tables = {}
     for col in anonymise_awsid_cols:
@@ -200,6 +203,9 @@ def main():
             if mt not in already_joined:
                 join_clauses.append(f"LEFT JOIN {mt} ON cur.\"{col}\" = {mt}.original")
                 already_joined.add(mt)
+        elif col in hash_cols:
+            # Use DuckDB's md5_number_upper for hashing
+            select_cols.append(f"md5_number_upper(cur.\"{col}\") AS \"{col}\"")
         else:
             select_cols.append(f"cur.\"{col}\"")
 
@@ -217,4 +223,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
