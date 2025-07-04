@@ -24,6 +24,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+
 # curanonymiser.py
 
 import argparse
@@ -96,8 +97,18 @@ def generate_config(input_file, config_file=None):
             "'awsarn_anonymise' (anonymise as AWS ARN using fake account ID), "
             "'hash' (hash the column using DuckDB's md5_number_upper)"
         ),
-        "columns": {col: "keep" for col in columns}
+        "columns": {}
     }
+    for col in columns:
+        col_lower = col.lower()
+        if "account_id" in col_lower:
+            config["columns"][col] = "awsid_anonymise"
+        elif "tag" in col_lower:
+            config["columns"][col] = "hash"
+        elif "a_r_n" in col_lower:
+            config["columns"][col] = "awsarn_anonymise"
+        else:
+            config["columns"][col] = "keep"
     if config_file:
         with open(config_file, "w") as f:
             json.dump(config, f, indent=2)
@@ -204,7 +215,6 @@ def main():
                 join_clauses.append(f"LEFT JOIN {mt} ON cur.\"{col}\" = {mt}.original")
                 already_joined.add(mt)
         elif col in hash_cols:
-            # Use DuckDB's md5_number_upper for hashing
             select_cols.append(f"md5_number_upper(cur.\"{col}\") AS \"{col}\"")
         else:
             select_cols.append(f"cur.\"{col}\"")
