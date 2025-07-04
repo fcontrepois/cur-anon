@@ -103,7 +103,7 @@ def generate_config(input_file, config_file=None):
         col_lower = col.lower()
         if "account_id" in col_lower:
             config["columns"][col] = "awsid_anonymise"
-        elif "tag" in col_lower:
+        elif "resourceTags" in col_lower:
             config["columns"][col] = "hash"
         elif "a_r_n" in col_lower:
             config["columns"][col] = "awsarn_anonymise"
