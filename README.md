@@ -1,22 +1,23 @@
-# curanonymiser
+# cur-anon
 
-A fast, no-fuss tool for anonymising AWS Cost and Usage Report (CUR) Parquet files. Strip out or mask sensitive details, keep your data useful, and share it with peace of mind.
+A brisk, no-nonsense tool for anonymising AWS Cost and Usage Report (CUR) Parquet files. Remove or mask sensitive details, preserve data utility, and share your reports without breaking a sweat—or a compliance rule.
 
 ---
 
 ## 🚀 Features
 
-- Reads and writes Parquet using DuckDB—no Spark or Java hassle
-- Anonymises AWS Account IDs and ARNs, keeping things consistent
-- Lets you drop columns you don’t need
-- Simple JSON config—easy to tweak, easy to share
-- Auto-generates a config file for you
+- Reads and writes Parquet (and CSV) via DuckDB; no Spark, no Java, no drama
+- Anonymises AWS Account IDs and ARNs, ensuring consistency across the dataset
+- Lets you hash columns, drop columns, or keep them as you fancy
+- Simple, human-editable JSON config, easy to share, easy to tweak
+- Auto-generates a config file from your Parquet columns
+- CLI with helpful flags and no unnecessary faff
 
 ---
 
 ## 🏁 Quick Start
 
-### 1. Install what you need
+### 1. Install the essentials
 
 ```sh
 pip install duckdb pandas
@@ -28,16 +29,17 @@ pip install duckdb pandas
 python curanonymiser.py --input rawcur.parquet --create-config --config config.json
 ```
 
-This gives you a config listing all columns. Edit it to pick what to keep, remove, or anonymise.
+This produces a config listing all columns and their suggested actions. Edit it to choose which columns to keep, remove, anonymise, or hash.
 
 ### 3. Edit your config
 
-Set each column to one of:
+Each column can be set to one of:
 
-- `keep` – keep as is
-- `remove` – drop the column
+- `keep` – leave the column untouched
+- `remove` – drop the column entirely
 - `awsid_anonymise` – swap for a fake, consistent 12-digit AWS account ID
-- `awsarn_anonymise` – swap for a fake ARN using the fake account ID
+- `awsarn_anonymise` – swap for a fake ARN, using the fake account ID
+- `hash` – scramble the column with DuckDB’s `md5_number_upper`, so the same value always produces the same hash, but there is no way back—perfect for secrets, not for magicians.
 
 ### 4. Run the anonymiser
 
@@ -45,7 +47,13 @@ Set each column to one of:
 python curanonymiser.py --input rawcur.parquet --output anonymisedcur.parquet --config config.json
 ```
 
-Done! Your anonymised file is ready.
+Or, if you prefer CSV:
+
+```sh
+python curanonymiser.py --input rawcur.parquet --output anonymisedcur.csv --config config.json
+```
+
+Voilà! Your anonymised file is ready for sharing, analysis, or waving triumphantly at your compliance officer.
 
 ---
 
@@ -53,14 +61,15 @@ Done! Your anonymised file is ready.
 
 ```json
 {
-  "_comment": "Column options: 'keep' (keep as is), 'remove' (remove column), 'awsid_anonymise' (anonymise as AWS account ID), 'awsarn_anonymise' (anonymise as AWS ARN using fake account ID)",
+  "_comment": "Column options: 'keep', 'remove', 'awsid_anonymise', 'awsarn_anonymise', 'hash'",
   "columns": {
     "lineItem/UsageAccountId": "awsid_anonymise",
     "bill/PayerAccountId": "awsid_anonymise",
     "lineItem/ResourceId": "awsarn_anonymise",
     "product/instanceType": "remove",
     "product/region": "keep",
-    "lineItem/UsageType": "keep"
+    "lineItem/UsageType": "keep",
+    "resourceTags/user:CostCentre": "hash"
   }
 }
 ```
@@ -75,7 +84,7 @@ Done! Your anonymised file is ready.
 duckdb -c "SELECT * FROM 'yourfile.parquet' LIMIT 0;"
 ```
 
-**Grab the first 100 rows as CSV:**
+**Export the first 100 rows as CSV:**
 
 ```sh
 duckdb -c "COPY (SELECT * FROM 'yourfile.parquet' LIMIT 100) TO STDOUT (HEADER, DELIMITER ',');"
@@ -83,26 +92,43 @@ duckdb -c "COPY (SELECT * FROM 'yourfile.parquet' LIMIT 100) TO STDOUT (HEADER, 
 
 ---
 
-## ❓ Need Help?
+## 🧐 How It Works
 
-Just run:
+- The script reads your input Parquet file and applies the actions specified in the config.
+- Account IDs are replaced with consistent, fake 12-digit numbers.
+- ARNs are rebuilt using the fake account IDs, so relationships are preserved.
+- Columns set to `hash` are hashed with DuckDB’s `md5_number_upper` function—irreversible, but consistent.
+- Columns set to `remove` vanish without a trace. Columns set to `keep` are left alone, as nature intended.
+- Output can be Parquet or CSV, depending on your mood.
+
+---
+
+## ❓ Flags & Usage
 
 ```sh
-python curanonymiser.py --help
+python curanonymiser.py --input INPUT.parquet --output OUTPUT.parquet --config config.json
 ```
 
----
-
-## 🤔 Why bother?
-
-CUR data is gold for cost analysis, but it’s packed with sensitive stuff. curanonymiser lets you keep the insights, lose the risk. No cloud uploads, no headaches: just Python, DuckDB, and you.
-
----
-
-## 📄 Licence
-
-MIT
+- `--input`           Path to the input Parquet file (required)
+- `--output`          Path to the output file (required, unless using `--create-config`)
+- `--config`          Path to the JSON config file (required, unless using `--create-config`)
+- `--create-config`   Generate a config file from the input Parquet file and exit
+- `--help`            Show help and exit
 
 ---
 
-Pull requests, bug reports, and bright ideas are always welcome!
+## 📜 Licence
+
+MIT. Because life’s too short for restrictive licences.
+
+---
+
+## 🥳 Contributing
+
+Pull requests, bug reports, and witty comments are welcome. If you spot a bug, fix it, or at least laugh at it in the issues section.
+
+---
+
+## 👀 Credits
+
+Crafted by Frank Contrepois, with a little help from AI, caffeine, and the occasional existential crisis.
