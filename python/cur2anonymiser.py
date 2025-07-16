@@ -31,9 +31,8 @@ import argparse
 import duckdb
 import json
 import os
-import random
-import re
 import sys
+from anonymiser_common import generate_fake_aws_account_id, generate_fake_arn, build_awsid_mapping, build_arn_mapping
 
 HELP_TEXT = """
 Anonymise AWS CUR Parquet files.
@@ -117,46 +116,6 @@ def generate_config(input_file, config_file=None):
         print(f"Config file created at {config_file}")
     else:
         print(json.dumps(config, indent=2))
-
-def generate_fake_aws_account_id(original_id):
-    random.seed(str(original_id))
-    return ''.join(random.choices('0123456789', k=12))
-
-def generate_fake_arn(original_arn, fake_account_id):
-    arn_regex = r"^arn:([^:]+):([^:]*):([^:]*):([^:]*):(.+)$"
-    m = re.match(arn_regex, original_arn)
-    if m:
-        parts = list(m.groups())
-        parts[3] = fake_account_id
-        return f"arn:{':'.join(parts)}"
-    else:
-        return original_arn
-
-def build_awsid_mapping(con, table, col):
-    unique_ids = con.execute(f"SELECT DISTINCT \"{col}\" FROM {table} WHERE \"{col}\" IS NOT NULL").fetchall()
-    mapping = []
-    for (orig_id,) in unique_ids:
-        fake_id = generate_fake_aws_account_id(orig_id)
-        mapping.append((orig_id, fake_id))
-    mapping_table = f"map_{col.replace('/', '_')}"
-    con.execute(f"CREATE TEMP TABLE {mapping_table} (original TEXT, fake TEXT)")
-    con.executemany(f"INSERT INTO {mapping_table} (original, fake) VALUES (?, ?)", mapping)
-    return mapping_table
-
-def build_arn_mapping(con, table, col, account_col, account_mapping_table):
-    unique_arns = con.execute(
-        f"SELECT DISTINCT cur.\"{col}\", cur.\"{account_col}\" FROM {table} cur WHERE cur.\"{col}\" IS NOT NULL"
-    ).fetchall()
-    account_map = dict(con.execute(f"SELECT original, fake FROM {account_mapping_table}").fetchall())
-    mapping = []
-    for orig_arn, orig_account_id in unique_arns:
-        fake_account_id = account_map.get(str(orig_account_id), generate_fake_aws_account_id(orig_account_id))
-        fake_arn = generate_fake_arn(orig_arn, fake_account_id)
-        mapping.append((orig_arn, fake_arn))
-    mapping_table = f"map_{col.replace('/', '_')}"
-    con.execute(f"CREATE TEMP TABLE {mapping_table} (original TEXT, fake TEXT)")
-    con.executemany(f"INSERT INTO {mapping_table} (original, fake) VALUES (?, ?)", mapping)
-    return mapping_table
 
 def main():
     args = parse_args()
