@@ -184,12 +184,12 @@ def main():
     for col in keep_cols:
         if col in anonymise_awsid_cols or col in anonymise_arn_cols:
             mt = mapping_tables[col]
-            select_cols.append(f"COALESCE({mt}.fake, cur.\"{col}\") AS \"{col}\"")
+            select_cols.append(f"COALESCE({mt}.fake, CAST(cur.\"{col}\" AS VARCHAR)) AS \"{col}\"")
             if mt not in already_joined:
                 join_clauses.append(f"LEFT JOIN {mt} ON cur.\"{col}\" = {mt}.original")
                 already_joined.add(mt)
         elif col in hash_cols:
-            select_cols.append(f"md5_number_upper(cur.\"{col}\") AS \"{col}\"")
+            select_cols.append(f"md5_number_upper(CAST(cur.\"{col}\" AS VARCHAR)) AS \"{col}\"")
         else:
             select_cols.append(f"cur.\"{col}\"")
 
