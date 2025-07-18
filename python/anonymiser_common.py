@@ -34,6 +34,7 @@ def generate_fake_aws_account_id(original_id: Any) -> str:
 
 def generate_fake_arn(original_arn: str, fake_account_id: str) -> str:
     """Generate a fake ARN by replacing the account-id part with the fake account ID, if present."""
+    original_arn = str(original_arn)  # Ensure string type
     arn_regex = r"^arn:([^:]+):([^:]*):([^:]*):([^:]*):(.+)$"
     m = re.match(arn_regex, original_arn)
     if m:
