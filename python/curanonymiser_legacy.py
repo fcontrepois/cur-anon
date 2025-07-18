@@ -22,6 +22,23 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+#
+# Usage Examples:
+#
+# Generate a config file:
+#   python curanonymiser_legacy.py --input rawcur_legacy.parquet --create-config --config config_legacy.json
+#
+# Run anonymisation:
+#   python curanonymiser_legacy.py --input rawcur_legacy.parquet --output anonymisedcur_legacy.parquet --config config_legacy.json
+#   python curanonymiser_legacy.py --input rawcur_legacy.parquet --output anonymisedcur_legacy.csv --config config_legacy.json
+#
+# Flags:
+#   --input           Path to the input Parquet file (required)
+#   --output          Path to the output file (required unless --create-config is used)
+#   --config          Path to the JSON config file (required unless --create-config is used)
+#   --create-config   Generate a config file from the input Parquet file and exit
+#   --help            Show this help message and exit
+
 import argparse
 import duckdb
 import json

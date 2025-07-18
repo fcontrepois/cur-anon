@@ -4,6 +4,20 @@ A brisk, no-nonsense tool for anonymising AWS Cost and Usage Report (CUR) Parque
 
 ---
 
+## ⚡️ Quick Usage Examples
+
+**CUR2:**
+- Generate config: `python python/cur2anonymiser.py --input rawcur2.parquet --create-config --config config_cur2.json`
+- Anonymise: `python python/cur2anonymiser.py --input rawcur2.parquet --output anonymisedcur2.parquet --config config_cur2.json`
+- Anonymise to CSV: `python python/cur2anonymiser.py --input rawcur2.parquet --output anonymisedcur2.csv --config config_cur2.json`
+
+**Legacy CUR:**
+- Generate config: `python python/curanonymiser_legacy.py --input rawcur_legacy.parquet --create-config --config config_legacy.json`
+- Anonymise: `python python/curanonymiser_legacy.py --input rawcur_legacy.parquet --output anonymisedcur_legacy.parquet --config config_legacy.json`
+- Anonymise to CSV: `python python/curanonymiser_legacy.py --input rawcur_legacy.parquet --output anonymisedcur_legacy.csv --config config_legacy.json`
+
+---
+
 ## 🚀 Features
 
 - Supports both legacy AWS CUR and CUR2 formats (see below)
@@ -121,15 +135,7 @@ duckdb -c "COPY (SELECT * FROM 'yourfile.parquet' LIMIT 100) TO STDOUT (HEADER, 
 
 ## ❓ Flags & Usage
 
-**CUR2:**
-```sh
-python python/cur2anonymiser.py --input INPUT.parquet --output OUTPUT.parquet --config CONFIG.json
-```
-**Legacy CUR:**
-```sh
-python python/curanonymiser_legacy.py --input INPUT.parquet --output OUTPUT.parquet --config CONFIG.json
-```
-
+**Flags:**
 - `--input`           Path to the input Parquet file (required)
 - `--output`          Path to the output file (required, unless using `--create-config`)
 - `--config`          Path to the JSON config file (required, unless using `--create-config`)
