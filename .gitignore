@@ -9,3 +9,5 @@ dbt/package-lock.yml
 **.json
 **.csv
 **.parquet
+__pycache__/
+*.pyc
