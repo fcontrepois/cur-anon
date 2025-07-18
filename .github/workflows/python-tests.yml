@@ -3,6 +3,7 @@
 #
 # Documentation:
 # This GitHub Actions workflow runs all Python tests on every push and pull request to any branch.
+# It uses pytest's verbose mode (-v) to provide detailed output for each test.
 # It checks out the code, sets up Python (3.12), installs dependencies, and runs pytest on the tests/ directory.
 #
 # Example usage:
@@ -10,9 +11,9 @@
 # - To add more Python versions, edit the 'python-version' matrix.
 # - To add more dependencies, update requirements.txt or the pip install line.
 #
-# Output is shown in the GitHub Actions UI under the "Actions" tab of your repository.
+# Output is shown in the GitHub Actions UI under the "Actions" tab of your repository, with detailed test results.
 
-name: Run All Python Tests
+name: Run All Python Tests (Verbose)
 
 on:
   push:
@@ -39,6 +40,6 @@ jobs:
           pip install -r requirements.txt
           pip install pytest duckdb
 
-      - name: Run tests
+      - name: Run tests (verbose)
         run: |
-          pytest tests/
+          pytest -v tests/
