@@ -56,7 +56,8 @@ def build_awsid_mapping(con: Any, table: str, col: str) -> str:
         mapping.append((orig_id, fake_id))
     mapping_table = f"map_{col.replace('/', '_').replace('.', '_')}"
     con.execute(f"CREATE TEMP TABLE {mapping_table} (original TEXT, fake TEXT)")
-    con.executemany(f"INSERT INTO {mapping_table} (original, fake) VALUES (?, ?)", mapping)
+    if mapping:
+        con.executemany(f"INSERT INTO {mapping_table} (original, fake) VALUES (?, ?)", mapping)
     return mapping_table
 
 
@@ -73,5 +74,6 @@ def build_arn_mapping(con: Any, table: str, col: str, account_col: str, account_
         mapping.append((orig_arn, fake_arn))
     mapping_table = f"map_{col.replace('/', '_').replace('.', '_')}"
     con.execute(f"CREATE TEMP TABLE {mapping_table} (original TEXT, fake TEXT)")
-    con.executemany(f"INSERT INTO {mapping_table} (original, fake) VALUES (?, ?)", mapping)
+    if mapping:
+        con.executemany(f"INSERT INTO {mapping_table} (original, fake) VALUES (?, ?)", mapping)
     return mapping_table 
