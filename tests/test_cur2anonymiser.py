@@ -86,3 +86,44 @@ def test_generate_config_assigns_column_types(monkeypatch, tmp_path):
     assert cols["product_instance_type"] == "keep"
     assert cols["resource_tags_user_costcentre"] == "hash"
     assert cols["product_region"] == "keep" 
+
+def test_full_csv_anonymisation(tmp_path):
+    import shutil
+    import csv
+    import os
+    # Copy config to temp dir
+    config_json = os.path.join(os.path.dirname(__file__), 'config_cur2.json')
+    output_csv = tmp_path / 'output.csv'
+    config_path = tmp_path / 'config.json'
+    shutil.copy(config_json, config_path)
+
+    # Use the pre-converted Parquet file as input
+    input_parquet = os.path.join(os.path.dirname(__file__), 'sample_cur2.parquet')
+
+    # Run anonymisation (simulate CLI call)
+    import sys
+    sys.argv = ['cur2anonymiser.py', '--input', input_parquet, '--output', str(output_csv), '--config', str(config_path)]
+    import cur2anonymiser
+    cur2anonymiser.main()
+
+    # Read output and check anonymisation
+    with open(output_csv, newline='') as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    # Check that account IDs are anonymised and consistent
+    payer_ids = set(row['bill_payer_account_id'] for row in rows)
+    usage_ids = set(row['line_item_usage_account_id'] for row in rows)
+    # All should be 12-digit numbers, not the original
+    for pid in payer_ids:
+        assert pid != '123456789012'
+        assert len(pid) == 12 and pid.isdigit()
+    for uid in usage_ids:
+        assert uid not in ['234567890123', '345678901234', '456789012345']
+        assert len(uid) == 12 and uid.isdigit()
+    # Check that ARNs are anonymised (account id replaced)
+    for row in rows:
+        for arn_col in ['reservation_reservation_a_r_n', 'savings_plan_savings_plan_a_r_n']:
+            arn = row[arn_col]
+            assert '123456789012' not in arn
+            assert arn.startswith('arn:') 

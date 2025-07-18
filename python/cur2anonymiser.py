@@ -1,7 +1,5 @@
-# curanonymiser.py
+# cur2anonymiser.py
 # mostly done between DIA AI and chatGPT with some check from me
-
-# curanonymiser.py
 #
 # MIT License
 # 
@@ -25,7 +23,22 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# curanonymiser.py
+#
+# Usage Examples:
+#
+# Generate a config file:
+#   python cur2anonymiser.py --input rawcur2.parquet --create-config --config config_cur2.json
+#
+# Run anonymisation:
+#   python cur2anonymiser.py --input rawcur2.parquet --output anonymisedcur2.parquet --config config_cur2.json
+#   python cur2anonymiser.py --input rawcur2.parquet --output anonymisedcur2.csv --config config_cur2.json
+#
+# Flags:
+#   --input           Path to the input Parquet file (required)
+#   --output          Path to the output file (required unless --create-config is used)
+#   --config          Path to the JSON config file (required unless --create-config is used)
+#   --create-config   Generate a config file from the input Parquet file and exit
+#   --help            Show this help message and exit
 
 import argparse
 import duckdb
@@ -35,7 +48,7 @@ import sys
 from anonymiser_common import generate_fake_aws_account_id, generate_fake_arn, build_awsid_mapping, build_arn_mapping
 
 HELP_TEXT = """
-Anonymise AWS CUR Parquet files.
+Anonymise AWS CUR2 Parquet files.
 
 Flags:
   --input           Path to the input Parquet file (required)
@@ -65,10 +78,10 @@ Config file options:
 
 Examples:
   Create a config file:
-    python curanonymiser.py --input rawcur.parquet --create-config --config config.json
+    python cur2anonymiser.py --input rawcur2.parquet --create-config --config config_cur2.json
 
   Run anonymisation:
-    python curanonymiser.py --input rawcur.parquet --output anonymisedcur.parquet --config config.json
+    python cur2anonymiser.py --input rawcur2.parquet --output anonymisedcur2.parquet --config config_cur2.json
 """
 
 def parse_args():
@@ -171,12 +184,12 @@ def main():
     for col in keep_cols:
         if col in anonymise_awsid_cols or col in anonymise_arn_cols:
             mt = mapping_tables[col]
-            select_cols.append(f"COALESCE({mt}.fake, cur.\"{col}\") AS \"{col}\"")
+            select_cols.append(f"COALESCE({mt}.fake, CAST(cur.\"{col}\" AS VARCHAR)) AS \"{col}\"")
             if mt not in already_joined:
                 join_clauses.append(f"LEFT JOIN {mt} ON cur.\"{col}\" = {mt}.original")
                 already_joined.add(mt)
         elif col in hash_cols:
-            select_cols.append(f"md5_number_upper(cur.\"{col}\") AS \"{col}\"")
+            select_cols.append(f"md5_number_upper(CAST(cur.\"{col}\" AS VARCHAR)) AS \"{col}\"")
         else:
             select_cols.append(f"cur.\"{col}\"")
 

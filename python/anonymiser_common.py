@@ -34,6 +34,7 @@ def generate_fake_aws_account_id(original_id: Any) -> str:
 
 def generate_fake_arn(original_arn: str, fake_account_id: str) -> str:
     """Generate a fake ARN by replacing the account-id part with the fake account ID, if present."""
+    original_arn = str(original_arn)  # Ensure string type
     arn_regex = r"^arn:([^:]+):([^:]*):([^:]*):([^:]*):(.+)$"
     m = re.match(arn_regex, original_arn)
     if m:
@@ -56,7 +57,8 @@ def build_awsid_mapping(con: Any, table: str, col: str) -> str:
         mapping.append((orig_id, fake_id))
     mapping_table = f"map_{col.replace('/', '_').replace('.', '_')}"
     con.execute(f"CREATE TEMP TABLE {mapping_table} (original TEXT, fake TEXT)")
-    con.executemany(f"INSERT INTO {mapping_table} (original, fake) VALUES (?, ?)", mapping)
+    if mapping:
+        con.executemany(f"INSERT INTO {mapping_table} (original, fake) VALUES (?, ?)", mapping)
     return mapping_table
 
 
@@ -73,5 +75,6 @@ def build_arn_mapping(con: Any, table: str, col: str, account_col: str, account_
         mapping.append((orig_arn, fake_arn))
     mapping_table = f"map_{col.replace('/', '_').replace('.', '_')}"
     con.execute(f"CREATE TEMP TABLE {mapping_table} (original TEXT, fake TEXT)")
-    con.executemany(f"INSERT INTO {mapping_table} (original, fake) VALUES (?, ?)", mapping)
+    if mapping:
+        con.executemany(f"INSERT INTO {mapping_table} (original, fake) VALUES (?, ?)", mapping)
     return mapping_table 
