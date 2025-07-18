@@ -1,27 +1,44 @@
-name: Python Tests
+# MIT License
+# Copyright (c) 2025 Frank Contrepois
+#
+# Documentation:
+# This GitHub Actions workflow runs all Python tests on every push and pull request to any branch.
+# It checks out the code, sets up Python (3.12), installs dependencies, and runs pytest on the tests/ directory.
+#
+# Example usage:
+# - Push any commit or open a pull request to any branch. The workflow will trigger and run your test suite.
+# - To add more Python versions, edit the 'python-version' matrix.
+# - To add more dependencies, update requirements.txt or the pip install line.
+#
+# Output is shown in the GitHub Actions UI under the "Actions" tab of your repository.
+
+name: Run All Python Tests
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
 
 jobs:
-  test:
+  run-tests:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.10, 3.11]
+        python-version: [3.12]
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest duckdb
+
       - name: Run tests
-        run: pytest tests/ 
+        run: |
+          pytest tests/
