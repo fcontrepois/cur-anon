@@ -1,2 +1,4 @@
 duckdb
-pytest 
+pytest
+numpy
+pandas 
