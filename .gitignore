@@ -9,3 +9,4 @@ dbt/package-lock.yml
 **.json
 **.csv
 **.parquet
+.DS_Store
