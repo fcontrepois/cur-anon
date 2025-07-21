@@ -99,6 +99,10 @@ def parse_args():
     return parser.parse_args()
 
 def generate_config_entry(input_file, config_file=None):
+    # Step 1: Check file size
+    if os.path.getsize(input_file) == 0:
+        print("Error: Input file is empty (0 bytes).", file=sys.stderr)
+        sys.exit(1)
     con = duckdb.connect()
     ext = os.path.splitext(input_file)[1].lower()
     if ext == ".csv":
@@ -106,6 +110,9 @@ def generate_config_entry(input_file, config_file=None):
     else:
         df = con.execute(f"SELECT * FROM read_parquet('{input_file}') LIMIT 0").fetchdf()
     columns = list(df.columns)
+    if not columns:
+        print("Error: Input file has no columns (empty or header-only).", file=sys.stderr)
+        sys.exit(1)
     config = generate_config(columns, mode="cur2")
     if config_file:
         with open(config_file, "w") as f:
@@ -121,6 +128,7 @@ def main():
         if not args.input:
             print("Error: --input is required for --create-config")
             sys.exit(1)
+        # The check for columns is now inside generate_config_entry
         if args.config:
             generate_config_entry(args.input, args.config)
         else:
@@ -132,6 +140,11 @@ def main():
         print(HELP_TEXT)
         sys.exit(1)
 
+    # Step 1: Check file size
+    if os.path.getsize(args.input) == 0:
+        print("Error: Input file is empty (0 bytes).", file=sys.stderr)
+        sys.exit(1)
+
     with open(args.config, 'r') as f:
         config = json.load(f)
     column_actions = config["columns"]
@@ -139,9 +152,15 @@ def main():
     con = duckdb.connect()
     ext = os.path.splitext(args.input)[1].lower()
     if ext == ".csv":
-        con.execute(f"CREATE TABLE cur AS SELECT * FROM read_csv_auto('{args.input}')")
+        con.execute(f'CREATE TABLE cur AS SELECT * FROM read_csv_auto(\'{args.input}\')')
     else:
-        con.execute(f"CREATE TABLE cur AS SELECT * FROM read_parquet('{args.input}')")
+        con.execute(f'CREATE TABLE cur AS SELECT * FROM read_parquet(\'{args.input}\')')
+
+    col_info = con.execute("PRAGMA table_info(cur)").fetchall()
+    if not col_info:
+        print("Error: Input file has no columns (empty or header-only).", file=sys.stderr)
+        sys.exit(1)
+    # Header-only files (zero rows) are allowed; do not error.
 
     all_cols = [row[0] for row in con.execute("PRAGMA table_info(cur)").fetchall()]
     keep_cols = [col for col, action in column_actions.items() if action in ("keep", "awsid_anonymise", "awsarn_anonymise", "hash", "uuid")]
