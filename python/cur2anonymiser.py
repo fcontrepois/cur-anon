@@ -89,7 +89,6 @@ Examples:
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Anonymise AWS CUR Parquet files.",
-        add_help=False,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=HELP_TEXT
     )
@@ -97,7 +96,6 @@ def parse_args():
     parser.add_argument('--output', required=False, help='Output file (Parquet or CSV)')
     parser.add_argument('--config', required=False, help='JSON config file for column handling')
     parser.add_argument('--create-config', action='store_true', help='Create a config file from the input Parquet file')
-    parser.add_argument('--help', action='store_true', help='Show this help message and exit')
     return parser.parse_args()
 
 def generate_config_entry(input_file, config_file=None):
@@ -118,10 +116,6 @@ def generate_config_entry(input_file, config_file=None):
 
 def main():
     args = parse_args()
-
-    if args.help:
-        print(HELP_TEXT)
-        sys.exit(0)
 
     if args.create_config:
         if not args.input:
