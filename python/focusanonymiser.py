@@ -28,7 +28,7 @@ import json
 import os
 import sys
 import uuid
-from anonymiser_common import build_uuid_mapping, generate_config
+from anonymiser_common import parse_args, validate_input_file, generate_config_entry, build_uuid_mapping, generate_config, AnonymiserInputError
 
 HELP_TEXT = """
 Anonymise tabular files (Parquet/CSV) with generic options.
@@ -65,117 +65,80 @@ Examples:
     python focusanonymiser.py --input rawdata.parquet --output anonymised.parquet --config config.json
 """
 
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Anonymise tabular files (Parquet/CSV) with generic options.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=HELP_TEXT
-    )
-    parser.add_argument('--input', required=False, help='Input Parquet file')
-    parser.add_argument('--output', required=False, help='Output file (Parquet or CSV)')
-    parser.add_argument('--config', required=False, help='JSON config file for column handling')
-    parser.add_argument('--create-config', action='store_true', help='Create a config file from the input Parquet file')
-    return parser.parse_args()
-
-def generate_config_entry(input_file, config_file=None):
-    # Step 1: Check file size
-    if os.path.getsize(input_file) == 0:
-        print("Error: Input file is empty (0 bytes).", file=sys.stderr)
-        sys.exit(1)
-    con = duckdb.connect()
-    ext = os.path.splitext(input_file)[1].lower()
-    if ext == ".csv":
-        df = con.execute(f"SELECT * FROM read_csv_auto('{input_file}') LIMIT 0").fetchdf()
-    else:
-        df = con.execute(f"SELECT * FROM read_parquet('{input_file}') LIMIT 0").fetchdf()
-    columns = list(df.columns)
-    if not columns:
-        print("Error: Input file has no columns (empty or header-only).", file=sys.stderr)
-        sys.exit(1)
-    config = generate_config(columns, mode="focus")
-    if config_file:
-        with open(config_file, "w") as f:
-            json.dump(config, f, indent=2)
-        print(f"Config file created at {config_file}")
-    else:
-        print(json.dumps(config, indent=2))
-
 def main():
-    args = parse_args()
+    # Error handling for input validation is now done via AnonymiserInputError
+    try:
+        args = parse_args("Anonymise tabular files (Parquet/CSV) with generic options.", HELP_TEXT)
 
-    if args.create_config:
-        if not args.input:
-            print("Error: --input is required for --create-config")
+        if args.create_config:
+            if not args.input:
+                print("Error: --input is required for --create-config", file=sys.stderr)
+                sys.exit(1)
+            generate_config_entry(args.input, args.config, mode="focus")
+            sys.exit(0)
+
+        if not args.config or not args.output or not args.input:
+            print("Error: --input, --config and --output are required unless --create-config is used.\n", file=sys.stderr)
+            print(HELP_TEXT, file=sys.stderr)
             sys.exit(1)
-        # The check for columns is now inside generate_config_entry
-        if args.config:
-            generate_config_entry(args.input, args.config)
+
+        validate_input_file(args.input)
+
+        with open(args.config, 'r') as f:
+            config = json.load(f)
+        column_actions = config["columns"]
+
+        con = duckdb.connect()
+        ext = os.path.splitext(args.input)[1].lower()
+        if ext == ".csv":
+            con.execute(f'CREATE TABLE data AS SELECT * FROM read_csv_auto(\'{args.input}\')')
         else:
-            generate_config_entry(args.input, None)
-        sys.exit(0)
+            con.execute(f'CREATE TABLE data AS SELECT * FROM read_parquet(\'{args.input}\')')
 
-    if not args.config or not args.output or not args.input:
-        print("Error: --input, --config and --output are required unless --create-config is used.\n")
-        print(HELP_TEXT)
-        sys.exit(1)
+        col_info = con.execute("PRAGMA table_info(data)").fetchall()
+        if not col_info:
+            print("Error: Input file has no columns (empty or header-only).", file=sys.stderr)
+            sys.exit(1)
+        # Header-only files (zero rows) are allowed; do not error.
 
-    # Step 1: Check file size
-    if os.path.getsize(args.input) == 0:
-        print("Error: Input file is empty (0 bytes).", file=sys.stderr)
-        sys.exit(1)
+        all_cols = [row[0] for row in con.execute("PRAGMA table_info(data)").fetchall()]
+        keep_cols = [col for col, action in column_actions.items() if action in ("keep", "hash", "uuid")]
+        hash_cols = [col for col, action in column_actions.items() if action == "hash"]
+        uuid_cols = [col for col, action in column_actions.items() if action == "uuid"]
 
-    with open(args.config, 'r') as f:
-        config = json.load(f)
-    column_actions = config["columns"]
+        mapping_tables = {}
+        for col in uuid_cols:
+            mapping_tables[col] = build_uuid_mapping(con, "data", col)
 
-    con = duckdb.connect()
-    ext = os.path.splitext(args.input)[1].lower()
-    if ext == ".csv":
-        con.execute(f'CREATE TABLE data AS SELECT * FROM read_csv_auto(\'{args.input}\')')
-    else:
-        con.execute(f'CREATE TABLE data AS SELECT * FROM read_parquet(\'{args.input}\')')
+        select_cols = []
+        join_clauses = []
+        already_joined = set()
+        for col in keep_cols:
+            if col in uuid_cols:
+                mt = mapping_tables[col]
+                select_cols.append(f'COALESCE({mt}.fake, data."{col}") AS "{col}"')
+                if mt not in already_joined:
+                    join_clauses.append(f'LEFT JOIN {mt} ON data."{col}" = {mt}.original')
+                    already_joined.add(mt)
+            elif col in hash_cols:
+                select_cols.append(f'md5_number_upper(data."{col}") AS "{col}"')
+            else:
+                select_cols.append(f'data."{col}"')
 
-    col_info = con.execute("PRAGMA table_info(data)").fetchall()
-    if not col_info:
-        print("Error: Input file has no columns (empty or header-only).", file=sys.stderr)
-        sys.exit(1)
-    # Header-only files (zero rows) are allowed; do not error.
+        select_sql = f'SELECT {', '.join(select_cols)} FROM data ' + ' '.join(join_clauses)
 
-    all_cols = [row[0] for row in con.execute("PRAGMA table_info(data)").fetchall()]
-    keep_cols = [col for col, action in column_actions.items() if action in ("keep", "hash", "uuid")]
-    hash_cols = [col for col, action in column_actions.items() if action == "hash"]
-    uuid_cols = [col for col, action in column_actions.items() if action == "uuid"]
+        output_file = args.output
+        output_ext = os.path.splitext(output_file)[1].lower()
 
-    mapping_tables = {}
-    for col in uuid_cols:
-        mapping_tables[col] = build_uuid_mapping(con, "data", col)
-
-    select_cols = []
-    join_clauses = []
-    already_joined = set()
-    for col in keep_cols:
-        if col in uuid_cols:
-            mt = mapping_tables[col]
-            select_cols.append(f'COALESCE({mt}.fake, data."{col}") AS "{col}"')
-            if mt not in already_joined:
-                join_clauses.append(f'LEFT JOIN {mt} ON data."{col}" = {mt}.original')
-                already_joined.add(mt)
-        elif col in hash_cols:
-            select_cols.append(f'md5_number_upper(data."{col}") AS "{col}"')
+        if output_ext == ".csv":
+            con.execute(f"COPY ({select_sql}) TO '{output_file}' (FORMAT CSV, HEADER 1)")
+            print(f"Anonymised file written to {output_file} (CSV format)")
         else:
-            select_cols.append(f'data."{col}"')
-
-    select_sql = f'SELECT {', '.join(select_cols)} FROM data ' + ' '.join(join_clauses)
-
-    output_file = args.output
-    output_ext = os.path.splitext(output_file)[1].lower()
-
-    if output_ext == ".csv":
-        con.execute(f"COPY ({select_sql}) TO '{output_file}' (FORMAT CSV, HEADER 1)")
-        print(f"Anonymised file written to {output_file} (CSV format)")
-    else:
-        con.execute(f"COPY ({select_sql}) TO '{output_file}' (FORMAT PARQUET)")
-        print(f"Anonymised file written to {output_file} (Parquet format)")
+            con.execute(f"COPY ({select_sql}) TO '{output_file}' (FORMAT PARQUET)")
+            print(f"Anonymised file written to {output_file} (Parquet format)")
+    except AnonymiserInputError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main() 
