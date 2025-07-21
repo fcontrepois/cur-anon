@@ -1,0 +1,168 @@
+# focusanonymiser.py
+#
+# MIT License
+# 
+# Copyright (c) 2025 Frank Contrepois  
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+import argparse
+import duckdb
+import json
+import os
+import sys
+import uuid
+from anonymiser_common import build_uuid_mapping, generate_config
+
+HELP_TEXT = """
+Anonymise tabular files (Parquet/CSV) with generic options.
+
+Flags:
+  --input           Path to the input Parquet file (required)
+  --output          Path to the output file (required unless --create-config is used)
+  --config          Path to the JSON config file (required unless --create-config is used)
+  --create-config   Generate a config file from the input Parquet file and exit
+
+Config file options:
+  The config file is a JSON file with this structure:
+  {
+    "_comment": "Column options: 'keep', 'remove', 'hash', 'uuid'",
+    "columns": {
+      "column1": "keep",
+      "column2": "remove",
+      "column3": "hash",
+      "column4": "uuid"
+    }
+  }
+
+  Column options:
+    keep              Keep the column as is
+    remove            Remove the column from the output
+    hash              Hash the column using DuckDB's md5_number_upper (same input = same output, not reversible)
+    uuid              Replace the column value with a deterministic UUID (same input = same output, not reversible)
+
+Examples:
+  Create a config file:
+    python focusanonymiser.py --input rawdata.parquet --create-config --config config.json
+
+  Run anonymisation:
+    python focusanonymiser.py --input rawdata.parquet --output anonymised.parquet --config config.json
+"""
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Anonymise tabular files (Parquet/CSV) with generic options.",
+        add_help=False,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=HELP_TEXT
+    )
+    parser.add_argument('--input', required=False, help='Input Parquet file')
+    parser.add_argument('--output', required=False, help='Output file (Parquet or CSV)')
+    parser.add_argument('--config', required=False, help='JSON config file for column handling')
+    parser.add_argument('--create-config', action='store_true', help='Create a config file from the input Parquet file')
+    parser.add_argument('--help', action='store_true', help='Show this help message and exit')
+    return parser.parse_args()
+
+def generate_config_entry(input_file, config_file=None):
+    con = duckdb.connect()
+    ext = os.path.splitext(input_file)[1].lower()
+    if ext == ".csv":
+        df = con.execute(f"SELECT * FROM read_csv_auto('{input_file}') LIMIT 0").fetchdf()
+    else:
+        df = con.execute(f"SELECT * FROM read_parquet('{input_file}') LIMIT 0").fetchdf()
+    columns = list(df.columns)
+    config = generate_config(columns, mode="focus")
+    if config_file:
+        with open(config_file, "w") as f:
+            json.dump(config, f, indent=2)
+        print(f"Config file created at {config_file}")
+    else:
+        print(json.dumps(config, indent=2))
+
+def main():
+    args = parse_args()
+
+    if args.help:
+        print(HELP_TEXT)
+        sys.exit(0)
+
+    if args.create_config:
+        if not args.input:
+            print("Error: --input is required for --create-config")
+            sys.exit(1)
+        if args.config:
+            generate_config_entry(args.input, args.config)
+        else:
+            generate_config_entry(args.input, None)
+        sys.exit(0)
+
+    if not args.config or not args.output or not args.input:
+        print("Error: --input, --config and --output are required unless --create-config is used.\n")
+        print(HELP_TEXT)
+        sys.exit(1)
+
+    with open(args.config, 'r') as f:
+        config = json.load(f)
+    column_actions = config["columns"]
+
+    con = duckdb.connect()
+    ext = os.path.splitext(args.input)[1].lower()
+    if ext == ".csv":
+        con.execute(f'CREATE TABLE data AS SELECT * FROM read_csv_auto(\'{args.input}\')')
+    else:
+        con.execute(f'CREATE TABLE data AS SELECT * FROM read_parquet(\'{args.input}\')')
+
+    all_cols = [row[0] for row in con.execute("PRAGMA table_info(data)").fetchall()]
+    keep_cols = [col for col, action in column_actions.items() if action in ("keep", "hash", "uuid")]
+    hash_cols = [col for col, action in column_actions.items() if action == "hash"]
+    uuid_cols = [col for col, action in column_actions.items() if action == "uuid"]
+
+    mapping_tables = {}
+    for col in uuid_cols:
+        mapping_tables[col] = build_uuid_mapping(con, "data", col)
+
+    select_cols = []
+    join_clauses = []
+    already_joined = set()
+    for col in keep_cols:
+        if col in uuid_cols:
+            mt = mapping_tables[col]
+            select_cols.append(f'COALESCE({mt}.fake, data."{col}") AS "{col}"')
+            if mt not in already_joined:
+                join_clauses.append(f'LEFT JOIN {mt} ON data."{col}" = {mt}.original')
+                already_joined.add(mt)
+        elif col in hash_cols:
+            select_cols.append(f'md5_number_upper(data."{col}") AS "{col}"')
+        else:
+            select_cols.append(f'data."{col}"')
+
+    select_sql = f'SELECT {', '.join(select_cols)} FROM data ' + ' '.join(join_clauses)
+
+    output_file = args.output
+    output_ext = os.path.splitext(output_file)[1].lower()
+
+    if output_ext == ".csv":
+        con.execute(f"COPY ({select_sql}) TO '{output_file}' (FORMAT CSV, HEADER 1)")
+        print(f"Anonymised file written to {output_file} (CSV format)")
+    else:
+        con.execute(f"COPY ({select_sql}) TO '{output_file}' (FORMAT PARQUET)")
+        print(f"Anonymised file written to {output_file} (Parquet format)")
+
+if __name__ == "__main__":
+    main() 
