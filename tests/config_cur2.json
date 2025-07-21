@@ -2,7 +2,7 @@
   "_comment": "Column options: 'keep' (keep as is), 'remove' (remove column), 'awsid_anonymise' (anonymise as AWS account ID), 'awsarn_anonymise' (anonymise as AWS ARN using fake account ID), 'hash' (hash the column using DuckDB's md5_number_upper)",
   "columns": {
     "bill_bill_type": "keep",
-    "bill_billing_entity": "keep",
+    "bill_billing_entity": "uuid",
     "bill_billing_period_start_date": "keep",
     "bill_billing_period_end_date": "keep",
     "bill_invoice_id": "keep",

@@ -23,3 +23,35 @@
 # SOFTWARE.
 
 # (No tests for CLI entry point; see integration tests for end-to-end validation.) 
+import subprocess
+import csv
+import os
+import uuid
+import shutil
+import tempfile
+
+def test_legacy_uuid_anonymisation():
+    # Prepare temp files
+    temp_dir = tempfile.mkdtemp()
+    input_parquet = os.path.join(os.path.dirname(__file__), 'sample_cur2.parquet')
+    config_json = os.path.join(os.path.dirname(__file__), 'config_cur2.json')
+    output_csv = os.path.join(temp_dir, 'output_legacy_uuid.csv')
+    config_path = os.path.join(temp_dir, 'config_uuid.json')
+    shutil.copy(config_json, config_path)
+    # Run the legacy anonymiser CLI
+    subprocess.run([
+        'python3', os.path.join(os.path.dirname(__file__), '../python/curanonymiser_legacy.py'),
+        '--input', input_parquet,
+        '--output', output_csv,
+        '--config', config_path
+    ], check=True)
+    # Read output and check uuid anonymisation
+    with open(output_csv, newline='') as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+    uuids = [row['bill_billing_entity'] for row in rows]
+    for val in uuids:
+        u = uuid.UUID(val)
+        assert u.version == 5
+    # All values should be the same UUID since all input values are 'AWS'
+    assert len(set(uuids)) == 1 

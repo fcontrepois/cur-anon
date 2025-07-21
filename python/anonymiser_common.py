@@ -78,3 +78,56 @@ def build_arn_mapping(con: Any, table: str, col: str, account_col: str, account_
     if mapping:
         con.executemany(f"INSERT INTO {mapping_table} (original, fake) VALUES (?, ?)", mapping)
     return mapping_table 
+
+
+def build_uuid_mapping(con: Any, table: str, col: str) -> str:
+    """
+    Build a mapping table in DuckDB for a column, mapping each unique value to a deterministic UUID (consistent for each unique input value).
+    """
+    import uuid
+    unique_values = con.execute(f'SELECT DISTINCT "{col}" FROM {table} WHERE "{col}" IS NOT NULL').fetchall()
+    mapping = []
+    for (orig_val,) in unique_values:
+        # Use uuid5 for deterministic UUIDs based on the value
+        fake_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(orig_val)))
+        mapping.append((orig_val, fake_uuid))
+    mapping_table = f"uuid_map_{col.replace('/', '_').replace('.', '_')}"
+    con.execute(f"CREATE TEMP TABLE {mapping_table} (original TEXT, fake TEXT)")
+    if mapping:
+        con.executemany(f"INSERT INTO {mapping_table} (original, fake) VALUES (?, ?)", mapping)
+    return mapping_table 
+
+
+def generate_config(columns, mode="legacy"):
+    """
+    Generate a config dict for anonymisation. Never assign 'uuid' by default.
+    mode: 'legacy', 'cur2', or 'focus' (affects AWS-specific logic)
+    """
+    focus_hash_cols = {"BillingAccountId", "BillingAccountName", "SubAccountId", "SubAccountIdName", "InvoiceId", "tag"}
+    config = {
+        "_comment": (
+            "Column options: 'keep' (keep as is), 'remove' (remove column), "
+            "'awsid_anonymise' (anonymise as AWS account ID), "
+            "'awsarn_anonymise' (anonymise as AWS ARN using fake account ID), "
+            "'hash' (hash the column using DuckDB's md5_number_upper), "
+            "'uuid' (replace with consistent UUID, only if explicitly set)"
+        ),
+        "columns": {}
+    }
+    for col in columns:
+        col_lower = col.lower()
+        if mode in ("legacy", "cur2"):
+            if "account_id" in col_lower or "usageaccountid" in col_lower or "payeraccountid" in col_lower:
+                config["columns"][col] = "awsid_anonymise"
+            elif "resourcetags" in col_lower or "resource_tags" in col_lower:
+                config["columns"][col] = "hash"
+            elif "a_r_n" in col_lower or "arn" in col_lower:
+                config["columns"][col] = "awsarn_anonymise"
+            else:
+                config["columns"][col] = "keep"
+        elif mode == "focus":
+            if col in focus_hash_cols:
+                config["columns"][col] = "hash"
+            else:
+                config["columns"][col] = "keep"
+    return config 

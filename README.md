@@ -67,6 +67,7 @@ Each column can be set to one of:
 - `awsid_anonymise` – swap for a fake, consistent 12-digit AWS account ID
 - `awsarn_anonymise` – swap for a fake ARN, using the fake account ID
 - `hash` – scramble the column with DuckDB’s `md5_number_upper`, so the same value always produces the same hash, but there is no way back—perfect for secrets, not for magicians.
+- `uuid` – replace the column value with a deterministic UUID (same input = same output, not reversible)
 
 ### 5. Run the anonymiser
 
@@ -93,7 +94,7 @@ Voilà! Your anonymised file is ready for sharing, analysis, or waving triumphan
 
 ```json
 {
-  "_comment": "Column options: 'keep', 'remove', 'awsid_anonymise', 'awsarn_anonymise', 'hash'",
+  "_comment": "Column options: 'keep', 'remove', 'awsid_anonymise', 'awsarn_anonymise', 'hash', 'uuid'",
   "columns": {
     "line_item_usage_account_id": "awsid_anonymise",
     "bill_payer_account_id": "awsid_anonymise",
@@ -101,7 +102,8 @@ Voilà! Your anonymised file is ready for sharing, analysis, or waving triumphan
     "product_instance_type": "remove",
     "product_region": "keep",
     "line_item_usage_type": "keep",
-    "resource_tags": "hash"
+    "resource_tags": "hash",
+    "column6": "uuid"
   }
 }
 ```

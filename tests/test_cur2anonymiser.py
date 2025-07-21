@@ -27,11 +27,12 @@ import re
 import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'python')))
-import cur2anonymiser
 
 # Test generate_fake_aws_account_id
 @pytest.mark.parametrize("original_id", ["123456789012", "000000000000", "999999999999", "abc", 123456789012])
 def test_generate_fake_aws_account_id_length_and_digits(original_id):
+    import importlib
+    cur2anonymiser = importlib.import_module('cur2anonymiser')
     fake_id = cur2anonymiser.generate_fake_aws_account_id(original_id)
     assert isinstance(fake_id, str)
     assert len(fake_id) == 12
@@ -40,6 +41,8 @@ def test_generate_fake_aws_account_id_length_and_digits(original_id):
 # Test that the same input always gives the same output
 @pytest.mark.parametrize("original_id", ["123456789012", "000000000000", "999999999999", "abc", 123456789012])
 def test_generate_fake_aws_account_id_deterministic(original_id):
+    import importlib
+    cur2anonymiser = importlib.import_module('cur2anonymiser')
     fake_id1 = cur2anonymiser.generate_fake_aws_account_id(original_id)
     fake_id2 = cur2anonymiser.generate_fake_aws_account_id(original_id)
     assert fake_id1 == fake_id2
@@ -54,29 +57,25 @@ def test_generate_fake_aws_account_id_deterministic(original_id):
     ]
 )
 def test_generate_fake_arn(original_arn, fake_account_id, expected_pattern):
+    import importlib
+    cur2anonymiser = importlib.import_module('cur2anonymiser')
     fake_arn = cur2anonymiser.generate_fake_arn(original_arn, fake_account_id)
     assert re.match(expected_pattern, fake_arn)
 
 # Test generate_config logic (mocking duckdb)
-def test_generate_config_assigns_column_types(monkeypatch, tmp_path):
-    class DummyCon:
-        def execute(self, sql):
-            class DummyDF:
-                columns = [
-                    "line_item_usage_account_id",
-                    "bill_payer_account_id",
-                    "line_item_resource_id",
-                    "product_instance_type",
-                    "resource_tags_user_costcentre",
-                    "product_region"
-                ]
-                def fetchdf(self):
-                    return self
-            return DummyDF()
-    monkeypatch.setattr(cur2anonymiser.duckdb, "connect", lambda: DummyCon())
-    config_file = tmp_path / "config.json"
-    cur2anonymiser.generate_config("dummy.parquet", str(config_file))
+def test_generate_config_assigns_column_types(tmp_path):
+    import subprocess
     import json
+    import os
+    # Use the real sample file (CSV or Parquet)
+    input_file = os.path.join(os.path.dirname(__file__), 'sample_cur2.parquet')
+    config_file = tmp_path / 'config.json'
+    subprocess.run([
+        'python3', os.path.join(os.path.dirname(__file__), '../python/cur2anonymiser.py'),
+        '--input', input_file,
+        '--create-config',
+        '--config', str(config_file)
+    ], check=True)
     with open(config_file) as f:
         config = json.load(f)
     cols = config["columns"]
@@ -84,8 +83,8 @@ def test_generate_config_assigns_column_types(monkeypatch, tmp_path):
     assert cols["bill_payer_account_id"] == "awsid_anonymise"
     assert cols["line_item_resource_id"] == "keep" or cols["line_item_resource_id"] == "awsarn_anonymise"
     assert cols["product_instance_type"] == "keep"
-    assert cols["resource_tags_user_costcentre"] == "hash"
-    assert cols["product_region"] == "keep" 
+    assert cols["resource_tags"] == "hash"
+    assert cols["product_region_code"] == "keep"
 
 def test_full_csv_anonymisation(tmp_path):
     import shutil
@@ -103,7 +102,8 @@ def test_full_csv_anonymisation(tmp_path):
     # Run anonymisation (simulate CLI call)
     import sys
     sys.argv = ['cur2anonymiser.py', '--input', input_parquet, '--output', str(output_csv), '--config', str(config_path)]
-    import cur2anonymiser
+    import importlib
+    cur2anonymiser = importlib.import_module('cur2anonymiser')
     cur2anonymiser.main()
 
     # Read output and check anonymisation
@@ -127,3 +127,37 @@ def test_full_csv_anonymisation(tmp_path):
             arn = row[arn_col]
             assert '123456789012' not in arn
             assert arn.startswith('arn:') 
+
+def test_uuid_column_anonymisation(tmp_path):
+    import shutil
+    import csv
+    import os
+    # Copy config to temp dir
+    config_json = os.path.join(os.path.dirname(__file__), 'config_cur2.json')
+    output_csv = tmp_path / 'output_uuid.csv'
+    config_path = tmp_path / 'config_uuid.json'
+    shutil.copy(config_json, config_path)
+
+    # Use the pre-converted Parquet file as input
+    input_parquet = os.path.join(os.path.dirname(__file__), 'sample_cur2.parquet')
+
+    # Run anonymisation (simulate CLI call)
+    import sys
+    sys.argv = ['cur2anonymiser.py', '--input', input_parquet, '--output', str(output_csv), '--config', str(config_path)]
+    import importlib
+    cur2anonymiser = importlib.import_module('cur2anonymiser')
+    cur2anonymiser.main()
+
+    # Read output and check uuid anonymisation
+    with open(output_csv, newline='') as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    uuids = [row['bill_billing_entity'] for row in rows]
+    # All should be valid UUIDs (version 5, deterministic)
+    import uuid
+    for val in uuids:
+        u = uuid.UUID(val)
+        assert u.version == 5
+    # All values should be the same UUID since all input values are 'AWS'
+    assert len(set(uuids)) == 1 
