@@ -28,6 +28,19 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'python')))
 
+import subprocess
+import json
+
+@pytest.mark.parametrize("help_flag", ["--help", "-h"])
+def test_cur2anonymiser_cli_help(help_flag):
+    # Test that CLI help returns usage info and exits 0
+    result = subprocess.run([
+        'python3', os.path.join(os.path.dirname(__file__), '../python/cur2anonymiser.py'),
+        help_flag
+    ], capture_output=True, text=True)
+    assert result.returncode == 0
+    assert 'usage' in result.stdout.lower() or 'help' in result.stdout.lower()
+
 # Test generate_fake_aws_account_id
 @pytest.mark.parametrize("original_id", ["123456789012", "000000000000", "999999999999", "abc", 123456789012])
 def test_generate_fake_aws_account_id_length_and_digits(original_id):
@@ -62,11 +75,7 @@ def test_generate_fake_arn(original_arn, fake_account_id, expected_pattern):
     fake_arn = cur2anonymiser.generate_fake_arn(original_arn, fake_account_id)
     assert re.match(expected_pattern, fake_arn)
 
-# Test generate_config logic (mocking duckdb)
 def test_generate_config_assigns_column_types(tmp_path):
-    import subprocess
-    import json
-    import os
     # Use the real sample file (CSV or Parquet)
     input_file = os.path.join(os.path.dirname(__file__), 'sample_cur2.parquet')
     config_file = tmp_path / 'config.json'
@@ -76,6 +85,7 @@ def test_generate_config_assigns_column_types(tmp_path):
         '--create-config',
         '--config', str(config_file)
     ], check=True)
+    assert os.path.exists(config_file)
     with open(config_file) as f:
         config = json.load(f)
     cols = config["columns"]
@@ -89,7 +99,6 @@ def test_generate_config_assigns_column_types(tmp_path):
 def test_full_csv_anonymisation(tmp_path):
     import shutil
     import csv
-    import os
     # Copy config to temp dir
     config_json = os.path.join(os.path.dirname(__file__), 'config_cur2.json')
     output_csv = tmp_path / 'output.csv'
@@ -105,6 +114,10 @@ def test_full_csv_anonymisation(tmp_path):
     import importlib
     cur2anonymiser = importlib.import_module('cur2anonymiser')
     cur2anonymiser.main()
+
+    # Assert output file exists and is not empty
+    assert os.path.exists(output_csv)
+    assert os.path.getsize(output_csv) > 0
 
     # Read output and check anonymisation
     with open(output_csv, newline='') as f:
@@ -131,7 +144,6 @@ def test_full_csv_anonymisation(tmp_path):
 def test_uuid_column_anonymisation(tmp_path):
     import shutil
     import csv
-    import os
     # Copy config to temp dir
     config_json = os.path.join(os.path.dirname(__file__), 'config_cur2.json')
     output_csv = tmp_path / 'output_uuid.csv'
@@ -148,6 +160,10 @@ def test_uuid_column_anonymisation(tmp_path):
     cur2anonymiser = importlib.import_module('cur2anonymiser')
     cur2anonymiser.main()
 
+    # Assert output file exists and is not empty
+    assert os.path.exists(output_csv)
+    assert os.path.getsize(output_csv) > 0
+
     # Read output and check uuid anonymisation
     with open(output_csv, newline='') as f:
         reader = csv.DictReader(f)
@@ -160,4 +176,44 @@ def test_uuid_column_anonymisation(tmp_path):
         u = uuid.UUID(val)
         assert u.version == 5
     # All values should be the same UUID since all input values are 'AWS'
-    assert len(set(uuids)) == 1 
+    assert len(set(uuids)) == 1
+
+@pytest.mark.parametrize("bad_json", [
+    '{bad json',
+    '',
+    '{"columns": "notadict"}',
+    '{"columns": {"col": "notanaction"}}'
+])
+def test_cur2anonymiser_negative_cases(tmp_path, bad_json):
+    input_parquet = os.path.join(os.path.dirname(__file__), 'sample_cur2.parquet')
+    config_path = tmp_path / 'bad_config.json'
+    output_csv = tmp_path / 'output.csv'
+    # Malformed config
+    with open(config_path, 'w') as f:
+        f.write(bad_json)
+    with pytest.raises(subprocess.CalledProcessError):
+        subprocess.run([
+            'python3', os.path.join(os.path.dirname(__file__), '../python/cur2anonymiser.py'),
+            '--input', input_parquet,
+            '--output', str(output_csv),
+            '--config', str(config_path)
+        ], check=True)
+    # Missing file
+    with pytest.raises(subprocess.CalledProcessError):
+        subprocess.run([
+            'python3', os.path.join(os.path.dirname(__file__), '../python/cur2anonymiser.py'),
+            '--input', 'nonexistent.parquet',
+            '--output', str(output_csv),
+            '--config', str(config_path)
+        ], check=True)
+    # Config with missing column
+    config_path2 = tmp_path / 'missing_col_config.json'
+    with open(config_path2, 'w') as f:
+        json.dump({"_comment": "test", "columns": {"NotAColumn": "hash"}}, f)
+    with pytest.raises(subprocess.CalledProcessError):
+        subprocess.run([
+            'python3', os.path.join(os.path.dirname(__file__), '../python/cur2anonymiser.py'),
+            '--input', input_parquet,
+            '--output', str(output_csv),
+            '--config', str(config_path2)
+        ], check=True) 
