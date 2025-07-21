@@ -1,26 +1,65 @@
 # focusanonymiser.py
-#
-# MIT License
-# 
-# Copyright (c) 2025 Frank Contrepois  
-# 
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-# 
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-# 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+"""
+Anonymise generic tabular cost and usage files (e.g., Azure/Focus format) in Parquet or CSV format.
+
+Removes or masks sensitive details, preserves data utility, and lets you share your reports safely.
+
+---
+
+USAGE EXAMPLES:
+
+Generate a config file:
+    python focusanonymiser.py --input rawdata.parquet --create-config --config config_focus.json
+
+Run anonymisation:
+    python focusanonymiser.py --input rawdata.parquet --output anonymised.parquet --config config_focus.json
+    python focusanonymiser.py --input rawdata.parquet --output anonymised.csv --config config_focus.json
+
+FLAGS:
+    --input           Path to the input Parquet or CSV file (required)
+    --output          Path to the output file (required unless --create-config is used)
+    --config          Path to the JSON config file (required unless --create-config is used)
+    --create-config   Generate a config file from the input file and exit
+    --help            Show this help message and exit
+
+CONFIG FILE OPTIONS:
+    The config file is a JSON file with this structure:
+    {
+      "_comment": "Column options: 'keep', 'remove', 'hash', 'uuid'",
+      "columns": {
+        "column1": "keep",
+        "column2": "remove",
+        "column3": "hash",
+        "column4": "uuid"
+      }
+    }
+
+    Column options:
+      keep    Keep the column as is
+      remove  Remove the column from the output
+      hash    Hash the column using DuckDB's md5_number_upper (same input = same output, not reversible)
+      uuid    Replace the column value with a deterministic UUID (same input = same output, not reversible)
+
+EXAMPLE CONFIG:
+    {
+      "_comment": "Column options: 'keep', 'remove', 'hash', 'uuid'",
+      "columns": {
+        "BillingAccountId": "hash",
+        "BillingAccountName": "hash",
+        "SubAccountId": "hash",
+        "SubAccountIdName": "hash",
+        "InvoiceId": "hash",
+        "tag": "hash",
+        "ResourceId": "keep",
+        "ServiceName": "keep"
+      }
+    }
+
+NOTES:
+- By default, columns like BillingAccountId, BillingAccountName, SubAccountId, SubAccountIdName, InvoiceId, and tag are hashed for anonymisation; all others are kept unless changed in the config.
+- Output can be Parquet or CSV, depending on the file extension you provide.
+- Designed for generic cost/usage data, especially Azure/Focus-style exports.
+"""
 
 import argparse
 import duckdb

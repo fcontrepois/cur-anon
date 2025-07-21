@@ -16,11 +16,16 @@ A brisk, no-nonsense tool for anonymising AWS Cost and Usage Report (CUR) Parque
 - Anonymise: `python python/curanonymiser_legacy.py --input rawcur_legacy.parquet --output anonymisedcur_legacy.parquet --config config_legacy.json`
 - Anonymise to CSV: `python python/curanonymiser_legacy.py --input rawcur_legacy.parquet --output anonymisedcur_legacy.csv --config config_legacy.json`
 
+**Focus (Generic/Azure):**
+- Generate config: `python python/focusanonymiser.py --input rawdata.parquet --create-config --config config_focus.json`
+- Anonymise: `python python/focusanonymiser.py --input rawdata.parquet --output anonymised.parquet --config config_focus.json`
+- Anonymise to CSV: `python python/focusanonymiser.py --input rawdata.parquet --output anonymised.csv --config config_focus.json`
+
 ---
 
 ## 🚀 Features
 
-- Supports both legacy AWS CUR and CUR2 formats (see below)
+- Supports both legacy AWS CUR, CUR2, and generic Focus (Azure-style) formats
 - Reads and writes Parquet (and CSV) via DuckDB; no Spark, no Java, no drama
 - Anonymises AWS Account IDs and ARNs, ensuring consistency across the dataset
 - Lets you hash columns, drop columns, or keep them as you fancy
@@ -28,6 +33,8 @@ A brisk, no-nonsense tool for anonymising AWS Cost and Usage Report (CUR) Parque
 - Auto-generates a config file from your Parquet columns
 - CLI with helpful flags and no unnecessary faff
 - MIT licensed, open source
+- In CUR2, the `resource_tags` column is a single column containing JSON (not split into multiple columns); by default, it is hashed for anonymisation
+- In Focus format, columns like `BillingAccountId`, `BillingAccountName`, `SubAccountId`, `SubAccountIdName`, `InvoiceId`, and `tag` are hashed by default; all others are kept unless changed in the config
 
 ---
 
@@ -43,6 +50,7 @@ pip install -r requirements.txt
 
 - **CUR2:** All-lowercase, underscore-separated columns (e.g., `line_item_blended_cost`)
 - **Legacy CUR:** Mixed case, slashes, or camelCase columns (e.g., `lineItem/UsageAccountId`)
+- **Focus:** Generic tabular format (often Azure), e.g., columns like `BillingAccountId`, `ServiceName`, `Tags`, etc.
 
 ### 3. Generate a config file
 
@@ -54,6 +62,11 @@ python python/cur2anonymiser.py --input rawcur2.parquet --create-config --config
 **For Legacy CUR:**
 ```sh
 python python/curanonymiser_legacy.py --input rawcur_legacy.parquet --create-config --config config_legacy.json
+```
+
+**For Focus:**
+```sh
+python python/focusanonymiser.py --input rawdata.parquet --create-config --config config_focus.json
 ```
 
 This produces a config listing all columns and their suggested actions. Edit it to choose which columns to keep, remove, anonymise, or hash.
@@ -81,9 +94,16 @@ python python/cur2anonymiser.py --input rawcur2.parquet --output anonymisedcur2.
 python python/curanonymiser_legacy.py --input rawcur_legacy.parquet --output anonymisedcur_legacy.parquet --config config_legacy.json
 ```
 
+**For Focus:**
+```sh
+python python/focusanonymiser.py --input rawdata.parquet --output anonymised.parquet --config config_focus.json
+```
+
 Or, if you prefer CSV:
 ```sh
 python python/cur2anonymiser.py --input rawcur2.parquet --output anonymisedcur2.csv --config config_cur2.json
+python python/curanonymiser_legacy.py --input rawcur_legacy.parquet --output anonymisedcur_legacy.csv --config config_legacy.json
+python python/focusanonymiser.py --input rawdata.parquet --output anonymised.csv --config config_focus.json
 ```
 
 Voilà! Your anonymised file is ready for sharing, analysis, or waving triumphantly at your compliance officer.
@@ -107,6 +127,30 @@ Voilà! Your anonymised file is ready for sharing, analysis, or waving triumphan
   }
 }
 ```
+
+> **Note:** In CUR2, the `resource_tags` column contains all resource tags as a single JSON object. By default, the anonymiser hashes this column to protect tag values while preserving uniqueness for analysis.
+
+---
+
+## 📝 Example Config (Focus)
+
+```json
+{
+  "_comment": "Column options: 'keep', 'remove', 'hash', 'uuid'",
+  "columns": {
+    "BillingAccountId": "hash",
+    "BillingAccountName": "hash",
+    "SubAccountId": "hash",
+    "SubAccountIdName": "hash",
+    "InvoiceId": "hash",
+    "tag": "hash",
+    "ResourceId": "keep",
+    "ServiceName": "keep"
+  }
+}
+```
+
+> **Note:** In Focus format, columns like `BillingAccountId`, `BillingAccountName`, `SubAccountId`, `SubAccountIdName`, `InvoiceId`, and `tag` are hashed by default. All other columns are kept unless you change their action in the config.
 
 ---
 
