@@ -16,7 +16,7 @@ A brisk, no-nonsense tool for anonymising AWS Cost and Usage Report (CUR) Parque
 - Anonymise: `python python/curanonymiser_legacy.py --input rawcur_legacy.parquet --output anonymisedcur_legacy.parquet --config config_legacy.json`
 - Anonymise to CSV: `python python/curanonymiser_legacy.py --input rawcur_legacy.parquet --output anonymisedcur_legacy.csv --config config_legacy.json`
 
-**Focus (Generic/Azure):**
+**Focus (Generic - works for any table format):**
 - Generate config: `python python/focusanonymiser.py --input rawdata.parquet --create-config --config config_focus.json`
 - Anonymise: `python python/focusanonymiser.py --input rawdata.parquet --output anonymised.parquet --config config_focus.json`
 - Anonymise to CSV: `python python/focusanonymiser.py --input rawdata.parquet --output anonymised.csv --config config_focus.json`
